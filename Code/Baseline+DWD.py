@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange, repeat
-# 双输入的VIT
 # DEVICE = "cuda:1"  # device
 
 class DepthwiseSeparableConv(nn.Module):
@@ -27,30 +26,23 @@ class Module1(nn.Module):
     def forward(self, x, height, width):
         B, C, H, W = x.size()
 
-        # 计算每个小块的高度和宽度
         grid_height = H // 4
         grid_width = W // 4
 
-        # 中间四格的位置
         middle_positions = [(1, 1), (1, 2), (2, 1), (2, 2)]
-        # 四个角块的位置
         corner_positions = [(0, 0), (0, 3), (3, 0), (3, 3)]
 
-        # 创建一个新的张量来存储重排后的结果
         x_rearranged = x.clone()
 
-        # 交换中间四格与四个角块
         for i in range(4):
             middle_y, middle_x = middle_positions[i]
             corner_y, corner_x = corner_positions[i]
 
-            # 保存中间块和角块的副本
             middle_block = x[:, :, middle_y * grid_height:(middle_y + 1) * grid_height,
                            middle_x * grid_width:(middle_x + 1) * grid_width].clone()
             corner_block = x[:, :, corner_y * grid_height:(corner_y + 1) * grid_height,
                            corner_x * grid_width:(corner_x + 1) * grid_width].clone()
 
-            # 交换块
             x_rearranged[:, :, corner_y * grid_height:(corner_y + 1) * grid_height,
             corner_x * grid_width:(corner_x + 1) * grid_width] = middle_block
             x_rearranged[:, :, middle_y * grid_height:(middle_y + 1) * grid_height,
@@ -60,17 +52,13 @@ class Module1(nn.Module):
 
         B, C, H, W = x_rearranged.size()
 
-        # 计算每个小块的高度和宽度
         grid_height = H // 4
         grid_width = W // 4
 
-        # 中间四块的位置
         middle_positions = [(1, 1), (1, 2), (2, 1), (2, 2)]
 
-        # 创建一个新的张量来存储结果
         result_tensor = x_rearranged.clone()
 
-        # 挖掉中间四块，并用0填充
         for y, x in middle_positions:
             result_tensor[:, :, y * grid_height:(y + 1) * grid_height, x * grid_width:(x + 1) * grid_width] = 0
 
@@ -122,7 +110,6 @@ class Module1(nn.Module):
 
         B, C, H, W = x.size()
 
-        # 计算每个小块的高度和宽度
         grid_height = H // 4
         grid_width = W // 4
 
@@ -523,3 +510,4 @@ if __name__ == "__main__":
     preds = model(x)
     print(x.shape)
     print(preds.shape)
+
