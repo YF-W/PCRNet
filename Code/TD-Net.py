@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange, repeat
 import numpy as np
-# 双输入的VIT
 # DEVICE = "cuda:1"  # device
 
 class DepthwiseSeparableConv(nn.Module):
@@ -28,30 +27,23 @@ class Module1(nn.Module):
     def forward(self, x, height, width):
         B, C, H, W = x.size()
 
-        # 计算每个小块的高度和宽度
         grid_height = H // 4
         grid_width = W // 4
 
-        # 中间四格的位置
         middle_positions = [(1, 1), (1, 2), (2, 1), (2, 2)]
-        # 四个角块的位置
         corner_positions = [(0, 0), (0, 3), (3, 0), (3, 3)]
 
-        # 创建一个新的张量来存储重排后的结果
         x_rearranged = x.clone()
 
-        # 交换中间四格与四个角块
         for i in range(4):
             middle_y, middle_x = middle_positions[i]
             corner_y, corner_x = corner_positions[i]
 
-            # 保存中间块和角块的副本
             middle_block = x[:, :, middle_y * grid_height:(middle_y + 1) * grid_height,
                            middle_x * grid_width:(middle_x + 1) * grid_width].clone()
             corner_block = x[:, :, corner_y * grid_height:(corner_y + 1) * grid_height,
                            corner_x * grid_width:(corner_x + 1) * grid_width].clone()
 
-            # 交换块
             x_rearranged[:, :, corner_y * grid_height:(corner_y + 1) * grid_height,
             corner_x * grid_width:(corner_x + 1) * grid_width] = middle_block
             x_rearranged[:, :, middle_y * grid_height:(middle_y + 1) * grid_height,
@@ -61,17 +53,13 @@ class Module1(nn.Module):
 
         B, C, H, W = x_rearranged.size()
 
-        # 计算每个小块的高度和宽度
         grid_height = H // 4
         grid_width = W // 4
 
-        # 中间四块的位置
         middle_positions = [(1, 1), (1, 2), (2, 1), (2, 2)]
 
-        # 创建一个新的张量来存储结果
         result_tensor = x_rearranged.clone()
 
-        # 挖掉中间四块，并用0填充
         for y, x in middle_positions:
             result_tensor[:, :, y * grid_height:(y + 1) * grid_height, x * grid_width:(x + 1) * grid_width] = 0
 
@@ -123,30 +111,23 @@ class Module1(nn.Module):
 
         B, C, H, W = x.size()
 
-        # 计算每个小块的高度和宽度
         grid_height = H // 4
         grid_width = W // 4
 
-        # 中间四格的位置
         middle_positions = [(1, 1), (1, 2), (2, 1), (2, 2)]
-        # 四个角块的位置
         corner_positions = [(0, 0), (0, 3), (3, 0), (3, 3)]
 
-        # 创建一个新的张量来存储重排后的结果
         x_rearranged2 = x.clone()
 
-        # 交换中间四格与四个角块
         for i in range(4):
             middle_y, middle_x = middle_positions[i]
             corner_y, corner_x = corner_positions[i]
 
-            # 保存中间块和角块的副本
             middle_block = x[:, :, middle_y * grid_height:(middle_y + 1) * grid_height,
                            middle_x * grid_width:(middle_x + 1) * grid_width].clone()
             corner_block = x[:, :, corner_y * grid_height:(corner_y + 1) * grid_height,
                            corner_x * grid_width:(corner_x + 1) * grid_width].clone()
 
-            # 交换块
             x_rearranged2[:, :, corner_y * grid_height:(corner_y + 1) * grid_height,
             corner_x * grid_width:(corner_x + 1) * grid_width] = middle_block
             x_rearranged2[:, :, middle_y * grid_height:(middle_y + 1) * grid_height,
@@ -156,44 +137,24 @@ class Module1(nn.Module):
 
         return x
 
-#模糊积分
-
 def choquet_integral_batch(inputs, fuzzy_measure):
-    """
-    计算给定输入和模糊测度的Choquet积分（批量处理）。
-
-    :param inputs: 形状为 (B, C, H, W, 2) 的张量，表示输入值。
-    :param fuzzy_measure: 形状为 (2,) 的张量，表示模糊测度。
-    :return: 形状为 (B, C, H, W) 的张量，表示Choquet积分的结果。
-    """
-    # 对输入值和对应的模糊测度进行降序排序
+   
     sorted_inputs, indices = torch.sort(inputs, dim=-1, descending=True)
     fuzzy_measure = fuzzy_measure.to(inputs.device)
     sorted_fuzzy_measure = fuzzy_measure[indices]
 
-    # 计算模糊测度的差分
     diffs = torch.cat([sorted_fuzzy_measure[..., :1], sorted_fuzzy_measure[..., 1:] - sorted_fuzzy_measure[..., :-1]],
                       dim=-1)
 
-    # 计算Choquet积分
     choquet_value = torch.sum(sorted_inputs * diffs, dim=-1)
 
     return choquet_value
 
 
 def fuse_feature_maps(feature_map1, feature_map2, fuzzy_measure):
-    """
-    使用Choquet模糊积分融合两个特征图。
-
-    :param feature_map1: 第一个特征图，形状为 (B, C, H, W)。
-    :param feature_map2: 第二个特征图，形状为 (B, C, H, W)。
-    :param fuzzy_measure: 模糊测度，形状为 (2,)。
-    :return: 融合后的特征图，形状为 (B, C, H, W)。
-    """
-    # 将两个特征图堆叠在一起，形状为 (B, C, H, W, 2)
+   
     inputs = torch.stack([feature_map1, feature_map2], dim=-1)
 
-    # 计算Choquet积分
     fused_feature_map = choquet_integral_batch(inputs, fuzzy_measure)
 
     return fused_feature_map
@@ -235,9 +196,7 @@ class MinPooling2D(nn.Module):
         self.padding = padding
 
     def forward(self, x):
-        # 使用 unfold 展开窗口
         unfolded = x.unfold(2, self.kernel_size, self.stride).unfold(3, self.kernel_size, self.stride)
-        # 计算每个窗口的最小值
         min_pooled = unfolded.contiguous().view(*unfolded.size()[:-2], -1).min(dim=-1)[0]
         return min_pooled
 
@@ -259,14 +218,9 @@ class DoubleConv3(nn.Module):
         return self.double_conv(x)
 
 
-#===============
-# A_Former_v0
 def pair(t):
     return t if isinstance(t, tuple) else (t, t)
 class PatchEmbed(nn.Module):
-    """
-    2D Image to Patch Embedding
-    """
 
     def __init__(self, img_size=224, patch_size=16, in_c=3, embed_dim=768, norm_layer=None):
         super().__init__()
@@ -424,8 +378,6 @@ class ViT(nn.Module):
 
         return x
 
-#==============================
-
 
 class KU_Block(nn.Module):
     def __init__(self, in_c, out_c):
@@ -444,7 +396,6 @@ class KU_Block(nn.Module):
         new_h = h * 2
         new_w = w * 2
 
-        # 使用输入张量的数据类型和设备创建新张量
         out = torch.zeros(b, c, new_h, new_w, dtype=x1.dtype, device=x1.device)
 
         out[:, :, 0::2, 0::2] = x1
@@ -452,7 +403,6 @@ class KU_Block(nn.Module):
         out[:, :, 1::2, 0::2] = x3
         out[:, :, 1::2, 1::2] = x4
 
-        # 确保所有操作都在相同的数据类型下进行
         out = out.to(x.dtype)
 
         out = self.conv2(out)
@@ -472,17 +422,13 @@ class ANet(nn.Module):
         self.Module2_2 = Module2(256)
         self.Module2_3 = Module2(128)
 
-
-        # encoder of UNet
         self.dconv_k3_1 = DoubleConv3(3, 64)
         self.dconv_k3_2 = DoubleConv3(64, 128)
         self.dconv_k3_3 = DoubleConv3(128, 256)
         self.dconv_k3_4 = DoubleConv3(256, 512)
 
         self.downsample = nn.MaxPool2d(kernel_size=2, stride=2)
-        # self.downsample = nn.MaxPool3d(2)
 
-        # encoder of A_VIT
         self.encoder_f_1 = ViT(image_size=(224, 224), patch_size=(16, 16), num_classes=64, dim=196, depth=1, heads=12,
                                mlp_dim=256, channels = 64, dim_head=64, dropout=0.1, emb_dropout=0.1, new_shape=224)
         self.encoder_f_2 = ViT(image_size=(224, 224), patch_size=(8, 8), num_classes=128, dim=196, depth=1, heads=12,
@@ -496,23 +442,18 @@ class ANet(nn.Module):
         self.K_block_3 = KU_Block(128, 128)
         self.K_block_4 = KU_Block(256, 256)
 
-
-        # conv_k5 -> f
         self.conv_k5_1 = DoubleConv3(64, 64)
         self.conv_k5_2 = DoubleConv3(128, 128)
         self.conv_k5_3 = DoubleConv3(256, 256)
         self.conv_k5_4 = DoubleConv3(512, 512)
 
-        #decoder
         self.conv_d_4 = DoubleConv3(1024, 512)
         self.conv_d_3 = DoubleConv3(1024, 256)
         self.conv_d_2 = DoubleConv3(512, 128)
         self.conv_d_1 = DoubleConv3(256, 64)
 
-        # out
         self.conv_out = nn.Conv2d(64, 1, kernel_size=1)
 
-        # up
         self.up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
         self.minpool = MinPooling2D()
 
@@ -523,7 +464,6 @@ class ANet(nn.Module):
 
         _, _, height, width = x.shape
 
-        # encoder of UNet
         x_u_1 = self.dconv_k3_1(x_u)
         x_u_1_m = self.minpool(x_u_1)
         x_u_2 = self.downsample(x_u_1)
@@ -538,7 +478,6 @@ class ANet(nn.Module):
         x_u_4 = x_u_4 - x_u_3_m
         x_u_4 = self.dconv_k3_4(x_u_4)
 
-        # encoder of A_Former
         x_f = self.dconv_k3_1(x_f)
         # x_f = self.K_block_1(x_f)
         x_f_1 = self.encoder_f_1(x_f, x_u_1)
@@ -549,14 +488,11 @@ class ANet(nn.Module):
         # x_f_3 = self.K_block_4(x_f_3)
         x_f_4 = self.encoder_f_4(x_f_3, x_u_3)
 
-
-        # f + u
         skip_1 = x_f_1 + x_u_1
         skip_2 = x_f_2 + x_u_2
         skip_3 = x_f_3 + x_u_3
         skip_4 = x_f_4 + x_u_4
 
-        # dconv -> f
         x_f_1 = self.conv_k5_1(skip_1)
         x_f_2 = self.conv_k5_2(skip_2)
         x_f_3 = self.conv_k5_3(skip_3)
@@ -567,13 +503,11 @@ class ANet(nn.Module):
         x_f_3 = self.Module1_3(x_f_3, height // 4, width // 4)
         x_f_4 = self.Module1_4(x_f_4, height // 8, width // 8)
 
-        # concat f and skip
         x_d_1 = torch.cat((x_f_1, skip_1), dim=1)
         x_d_2 = torch.cat((x_f_2, skip_2), dim=1)
         x_d_3 = torch.cat((x_f_3, skip_3), dim=1)
         x_d_4 = torch.cat((x_f_4, skip_4), dim=1)
 
-        # decoder
         x_d_4 = self.conv_d_4(x_d_4)
         x_d_4 = self.up(x_d_4)
         # x_d_3 = torch.cat((x_d_3, x_d_4), dim=1)
@@ -591,11 +525,7 @@ class ANet(nn.Module):
 
         x_d_1 = self.conv_d_1(x_d_1)
 
-
-        # output
         x_out = self.conv_out(x_d_1)
-
-
 
         return x_out
 
@@ -606,3 +536,4 @@ if __name__ == "__main__":
     preds = model(x)
     print(x.shape)
     print(preds.shape)
+
